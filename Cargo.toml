@@ -1,0 +1,12 @@
+[package]
+name = "zoe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dirs = "6.0.0"
+gdk4 = "0.9.5"
+gio = "0.20.7"
+glib = "0.20.7"
+gtk4 = { version = "0.9.5", features = ["v4_16"] }
+gtk4-sys = { version = "0.9.5", features = ["v4_16"] }
