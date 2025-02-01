@@ -19,7 +19,10 @@ fn main() -> glib::ExitCode {
     application.connect_startup(|app| {
         let provider = CssProvider::new();
         if let Some(home) = home_dir() {
+            #[cfg(unix)]
             provider.load_from_path(home.join(".config/zoe/style.css"));
+            #[cfg(windows)]
+            provider.load_from_path(home.join("AppData\\Local\\zoe\\style.css"));
 
             gtk::style_context_add_provider_for_display(
                 &gdk::Display::default().expect("Could not connect to a display."),
@@ -39,7 +42,11 @@ fn is_hyprland() -> bool {
 }
 
 fn buttons_check_sensitive(back_button: Rc<RefCell<Button>>, forward_button: Rc<RefCell<Button>>) {
+    #[cfg(unix)]
     let icons = PathBuf::from("/usr/share/zoe/icons/");
+    #[cfg(windows)]
+    let icons = PathBuf::from("C:\\Program Files\\zoe\\icons");
+
     let back_button_icon_innactive = Image::from_file(icons.join("back-button-innactive.png"));
     let forward_button_icon_innactive =
         Image::from_file(icons.join("forward-button-innactive.png"));

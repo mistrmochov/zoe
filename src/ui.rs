@@ -30,7 +30,10 @@ pub fn build_ui(app: &gtk::Application) {
             header_bar = HeaderBar::builder().show_title_buttons(true).build();
         }
 
+        #[cfg(unix)]
         let icons = PathBuf::from("/usr/share/zoe/icons/");
+        #[cfg(windows)]
+        let icons = PathBuf::from("C:\\Program Files\\zoe\\icons");
         let back_button_icon_innactive = Image::from_file(icons.join("back-button-innactive.png"));
         let forward_button_icon_innactive =
             Image::from_file(icons.join("forward-button-innactive.png"));
@@ -77,6 +80,9 @@ pub fn build_ui(app: &gtk::Application) {
             .child(&flow_box)
             .build();
 
+        let window_clone = window.clone();
+        let window_clone2 = window_clone.clone();
+
         select_folder(
             home,
             flow_box_clone,
@@ -85,6 +91,7 @@ pub fn build_ui(app: &gtk::Application) {
             back_button.clone(),
             forward_button.clone(),
             true,
+            window_clone.clone(),
         );
 
         window.set_titlebar(Some(&header_bar));
@@ -175,6 +182,7 @@ pub fn build_ui(app: &gtk::Application) {
                                 back_button_clone.clone(),
                                 forward_button_clone.clone(),
                                 false, // Do not modify history
+                                window_clone.clone(),
                             );
                         }
                     }
@@ -231,6 +239,7 @@ pub fn build_ui(app: &gtk::Application) {
                                 back_button_clone.clone(),
                                 forward_button_clone.clone(),
                                 false, // Do not modify history
+                                window_clone2.clone(),
                             );
                         }
                     }
