@@ -1,6 +1,7 @@
 use dirs::home_dir;
-use gtk4::prelude::*;
-use gtk4::{self as gtk, Button, EventControllerMotion, HeaderBar, Image};
+use gdk4::Rectangle;
+use gtk4::{self as gtk, Box, Button, EventControllerMotion, HeaderBar, Image, Label, Popover};
+use gtk4::{prelude::*, ApplicationWindow};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -77,11 +78,14 @@ pub fn build_ui(app: &gtk::Application) {
         let scrolled_window = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never) // Disable horizontal scrolling
             .min_content_width(1)
+            .hexpand(true)
+            .vexpand(true)
             .child(&flow_box)
             .build();
 
         let window_clone = window.clone();
         let window_clone2 = window_clone.clone();
+        let scrolled_window_clone = scrolled_window.clone();
 
         select_folder(
             home,
@@ -92,6 +96,7 @@ pub fn build_ui(app: &gtk::Application) {
             forward_button.clone(),
             true,
             window_clone.clone(),
+            scrolled_window.clone(),
         );
 
         window.set_titlebar(Some(&header_bar));
@@ -183,6 +188,7 @@ pub fn build_ui(app: &gtk::Application) {
                                 forward_button_clone.clone(),
                                 false, // Do not modify history
                                 window_clone.clone(),
+                                scrolled_window.clone(),
                             );
                         }
                     }
@@ -240,6 +246,7 @@ pub fn build_ui(app: &gtk::Application) {
                                 forward_button_clone.clone(),
                                 false, // Do not modify history
                                 window_clone2.clone(),
+                                scrolled_window_clone.clone(),
                             );
                         }
                     }
@@ -259,4 +266,40 @@ pub fn build_ui(app: &gtk::Application) {
             });
         }
     }
+}
+
+pub fn pop_up(button: Button, window: ApplicationWindow, x: f64, y: f64) {
+    let popup = Popover::builder().has_arrow(false).build();
+    let vbox = Box::new(gtk4::Orientation::Vertical, 5);
+    let popup_options = vec!["Open", "Cut", "Copy", "Move", "Rename", "Delete"];
+
+    for option in popup_options.iter() {
+        let label = Label::new(Some(&option));
+        label.set_xalign(0.01);
+        label.add_css_class("files_color");
+        label.add_css_class("p_but_label");
+        let button = Button::builder().child(&label).build();
+        // Connect the click event
+        let option_name = option.to_string();
+        button.connect_clicked(move |_| {
+            println!("{} clicked!", option_name);
+            // Add logic for each option here
+        });
+
+        vbox.append(&button);
+    }
+
+    popup.set_child(Some(&vbox));
+
+    let rect = button.compute_bounds(&window); // Get absolute position
+
+    let wx = rect.unwrap().x() as i32 + x as i32 + 30;
+    let wy = rect.unwrap().x() as i32 + y as i32 - 15;
+
+    let rect = Rectangle::new(wx, wy, 1, 1);
+    // println!("Cur - {} : {}", bx, y);
+    popup.set_pointing_to(Some(&rect));
+
+    popup.set_parent(&button);
+    popup.popup();
 }
