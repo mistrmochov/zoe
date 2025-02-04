@@ -1,12 +1,13 @@
 use dirs::home_dir;
 use gdk4::Rectangle;
 use gtk4::{self as gtk, Box, Button, EventControllerMotion, HeaderBar, Image, Label, Popover};
-use gtk4::{prelude::*, ApplicationWindow};
+use gtk4::{prelude::*, ApplicationWindow, FlowBox, Orientation, ScrolledWindow};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::buttons_check_sensitive;
+use crate::cd::delete;
 use crate::is_hyprland;
 use crate::select_folder;
 
@@ -268,22 +269,60 @@ pub fn build_ui(app: &gtk::Application) {
     }
 }
 
-pub fn pop_up(button: Button, window: ApplicationWindow, x: f64, y: f64) {
+pub fn pop_up(
+    button: Button,
+    x: f64,
+    y: f64,
+    new_item: String,
+    item: String,
+    flow_box: FlowBox,
+    history: Rc<RefCell<Vec<PathBuf>>>,
+    current_pos: Rc<RefCell<usize>>,
+    back_button: Rc<RefCell<Button>>,
+    forward_button: Rc<RefCell<Button>>,
+    window: ApplicationWindow,
+    scr: ScrolledWindow,
+) {
     let popup = Popover::builder().has_arrow(false).build();
-    let vbox = Box::new(gtk4::Orientation::Vertical, 5);
+    let vbox = Box::new(Orientation::Vertical, 5);
     let popup_options = vec!["Open", "Cut", "Copy", "Move", "Rename", "Delete"];
 
     for option in popup_options.iter() {
-        let label = Label::new(Some(&option));
+        let label = Label::new(Some(option));
         label.set_xalign(0.01);
         label.add_css_class("files_color");
         label.add_css_class("p_but_label");
         let button = Button::builder().child(&label).build();
         // Connect the click event
-        let option_name = option.to_string();
+        let window_clone = window.clone();
+        let popup_clone = popup.clone();
+        let option_clone = option.to_string().clone();
+        let new_item = new_item.clone();
+        let item_clone = item.clone();
+
+        let flow_box_clone = flow_box.clone();
+        let history_clone = history.clone();
+        let current_pos_clone = current_pos.clone();
+        let back_button_clone = back_button.clone();
+        let forward_button_clone = forward_button.clone();
+        let scr_clone = scr.clone();
         button.connect_clicked(move |_| {
-            println!("{} clicked!", option_name);
-            // Add logic for each option here
+            popup_clone.popdown();
+            if option_clone == "Delete" {
+                // gtk::glib::MainContext::default()
+                //     .spawn_local(dialog_delete(window_clone.clone(), item.clone()));
+                dialog_delete(
+                    new_item.clone(),
+                    item_clone.clone(),
+                    flow_box_clone.clone(),
+                    history_clone.clone(),
+                    current_pos_clone.clone(),
+                    back_button_clone.clone(),
+                    forward_button_clone.clone(),
+                    window_clone.clone(),
+                    scr_clone.clone(),
+                );
+            }
         });
 
         vbox.append(&button);
@@ -301,5 +340,67 @@ pub fn pop_up(button: Button, window: ApplicationWindow, x: f64, y: f64) {
     popup.set_pointing_to(Some(&rect));
 
     popup.set_parent(&button);
+    popup.popup();
+}
+
+fn dialog_delete(
+    new_item: String,
+    item: String,
+    flow_box: FlowBox,
+    history: Rc<RefCell<Vec<PathBuf>>>,
+    current_pos: Rc<RefCell<usize>>,
+    back_button: Rc<RefCell<Button>>,
+    forward_button: Rc<RefCell<Button>>,
+    window: ApplicationWindow,
+    scr: ScrolledWindow,
+) {
+    let popup = Popover::builder().has_arrow(false).build();
+    let mes = format!("Permanently Delete \"{}\"?", new_item);
+    let title = Label::new(Some(&mes));
+    title.add_css_class("del_dialog_title");
+    let message = Label::new(Some("Permanently deleted items can't be restored"));
+    let but_cancel = Button::builder().label("Cancel").build();
+    let but_del = Button::builder().label("Delete").build();
+
+    let hbox = Box::new(Orientation::Horizontal, 20);
+    hbox.append(&but_cancel);
+    hbox.append(&but_del);
+    hbox.set_halign(gtk4::Align::Center);
+
+    let vbox = Box::new(Orientation::Vertical, 8);
+    vbox.append(&title);
+    vbox.append(&message);
+    vbox.append(&hbox);
+    vbox.set_valign(gtk4::Align::Center);
+    vbox.add_css_class("del_dialog_vbox");
+
+    let x = window.width() / 2;
+    let y = (window.height() / 2) - 50;
+    let rect = Rectangle::new(x, y, 1, 1);
+    popup.set_child(Some(&vbox));
+    popup.set_parent(&window);
+    popup.set_pointing_to(Some(&rect));
+    popup.add_css_class("del_dialog");
+    let popup_clone = popup.clone();
+
+    but_cancel.connect_clicked(move |_| {
+        popup_clone.popdown();
+    });
+    let popup_clone = popup.clone();
+    but_del.connect_clicked(move |_| {
+        popup_clone.popdown();
+        delete(
+            item.clone(),
+            flow_box.clone(),
+            history.clone(),
+            current_pos.clone(),
+            back_button.clone(),
+            forward_button.clone(),
+            window.clone(),
+            scr.clone(),
+        )
+        .expect("Failed to remove file");
+    });
+
     popup.popup();
 }

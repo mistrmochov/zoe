@@ -7,6 +7,7 @@ use gtk4::{
 };
 use std::cell::RefCell;
 use std::fs::{self};
+use std::io::{self};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -140,6 +141,7 @@ fn cd(
         let button_clone = button.clone();
         let window_clone = window.clone();
         let scr_clone = scr.clone();
+        let new_item_clone = new_item.clone();
 
         gesture.connect_pressed(move |_gesture, n_press, _x, _y| {
             if n_press == 2 {
@@ -162,10 +164,30 @@ fn cd(
             }
         });
         let window_clone = window.clone();
+        let item_clone = item.clone();
+        let flow_box_clone = flow_box.clone();
+        let history_clone = history.clone();
+        let current_pos_clone = current_pos.clone();
+        let back_button_clone = back_button.clone();
+        let forward_button_clone = forward_button.clone();
+        let scr_clone = scr.clone();
 
         gesture_popup.connect_pressed(move |_gesture, n_press, x, y| {
             if n_press == 1 {
-                pop_up(button_clone.clone(), window_clone.clone(), x, y);
+                pop_up(
+                    button_clone.clone(),
+                    x,
+                    y,
+                    new_item_clone.clone(),
+                    item_clone.clone().to_string(),
+                    flow_box_clone.clone(),
+                    history_clone.clone(),
+                    current_pos_clone.clone(),
+                    back_button_clone.clone(),
+                    forward_button_clone.clone(),
+                    window_clone.clone(),
+                    scr_clone.clone(),
+                );
             }
         });
 
@@ -180,4 +202,47 @@ fn cd(
     });
 }
 
-// pub fn delete()
+pub fn delete(
+    item: String,
+    flow_box: FlowBox,
+    history: Rc<RefCell<Vec<PathBuf>>>,
+    current_pos: Rc<RefCell<usize>>,
+    back_button: Rc<RefCell<Button>>,
+    forward_button: Rc<RefCell<Button>>,
+    window: ApplicationWindow,
+    scr: ScrolledWindow,
+) -> io::Result<()> {
+    let item_path = PathBuf::from(item);
+    if item_path.is_dir() {
+        fs::remove_dir_all(item_path)?;
+    } else if item_path.is_file() {
+        fs::remove_file(item_path)?;
+    } else if item_path.is_symlink() {
+        fs::remove_file(item_path)?;
+    }
+
+    let path_to_navigate = {
+        let current_pos_clone = current_pos.borrow_mut();
+
+        let history_clone = history.borrow();
+        Some(history_clone[*current_pos_clone].clone()) // Return only the PathBuf
+    };
+    if let Some(path) = path_to_navigate {
+        while let Some(child) = flow_box.first_child() {
+            flow_box.remove(&child);
+        }
+        select_folder(
+            path,
+            flow_box,
+            history,
+            current_pos,
+            back_button,
+            forward_button,
+            false,
+            window,
+            scr,
+        );
+    }
+
+    Ok(())
+}
