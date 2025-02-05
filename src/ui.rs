@@ -1,7 +1,10 @@
 use dirs::home_dir;
 use gdk4::Rectangle;
 use gtk4::{self as gtk, Box, Button, EventControllerMotion, HeaderBar, Image, Label, Popover};
-use gtk4::{prelude::*, ApplicationWindow, FlowBox, Orientation, ScrolledWindow};
+use gtk4::{
+    gdk::Display, prelude::*, ApplicationWindow, Entry, FlowBox, GestureClick, Orientation,
+    ScrolledWindow, Settings,
+};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -32,10 +35,13 @@ pub fn build_ui(app: &gtk::Application) {
             header_bar = HeaderBar::builder().show_title_buttons(true).build();
         }
 
-        #[cfg(unix)]
-        let icons = PathBuf::from("/usr/share/zoe/icons/");
-        #[cfg(windows)]
-        let icons = PathBuf::from("C:\\Program Files\\zoe\\icons");
+        let icons;
+        if is_dark_theme_active() {
+            icons = PathBuf::from("/usr/share/zoe/icons/dark");
+        } else {
+            icons = PathBuf::from("/usr/share/zoe/icons/light");
+        }
+
         let back_button_icon_innactive = Image::from_file(icons.join("back-button-innactive.png"));
         let forward_button_icon_innactive =
             Image::from_file(icons.join("forward-button-innactive.png"));
@@ -52,8 +58,6 @@ pub fn build_ui(app: &gtk::Application) {
                 .child(&forward_button_icon_innactive)
                 .build(),
         ));
-        back_button.borrow().set_size_request(1, 1);
-        forward_button.borrow().set_size_request(1, 1);
         back_button.borrow().add_css_class("back_button");
         forward_button.borrow().add_css_class("forward_button");
         forward_button.borrow().add_css_class("but");
@@ -87,6 +91,25 @@ pub fn build_ui(app: &gtk::Application) {
         let window_clone = window.clone();
         let window_clone2 = window_clone.clone();
         let scrolled_window_clone = scrolled_window.clone();
+
+        let gesture_click = GestureClick::new();
+        gesture_click.set_button(3);
+
+        gesture_click.connect_pressed(move |_gesture, _n_press, x, y| {
+            // Check if the click happened on a child widget
+            let child_widget = flow_box_clone.child_at_pos(x as i32, y as i32);
+
+            if child_widget.is_none() {
+                println!("Right-clicked on empty space at position ({}, {})", x, y);
+                // You can show your popover or context menu here
+            }
+        });
+
+        gesture_click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        scrolled_window.add_controller(gesture_click);
+
+        // Connect the click event
+        let flow_box_clone = flow_box.clone();
 
         select_folder(
             home,
@@ -282,17 +305,17 @@ pub fn pop_up(
     forward_button: Rc<RefCell<Button>>,
     window: ApplicationWindow,
     scr: ScrolledWindow,
+    popup_options: Vec<&str>,
 ) {
     let popup = Popover::builder().has_arrow(false).build();
     let vbox = Box::new(Orientation::Vertical, 5);
-    let popup_options = vec!["Open", "Cut", "Copy", "Move", "Rename", "Delete"];
 
     for option in popup_options.iter() {
         let label = Label::new(Some(option));
         label.set_xalign(0.01);
         label.add_css_class("files_color");
         label.add_css_class("p_but_label");
-        let button = Button::builder().child(&label).build();
+        let button_pop = Button::builder().child(&label).build();
         // Connect the click event
         let window_clone = window.clone();
         let popup_clone = popup.clone();
@@ -306,8 +329,12 @@ pub fn pop_up(
         let back_button_clone = back_button.clone();
         let forward_button_clone = forward_button.clone();
         let scr_clone = scr.clone();
-        button.connect_clicked(move |_| {
+        let button_clone = button.clone();
+        button_pop.add_css_class("flat");
+
+        button_pop.connect_clicked(move |_| {
             popup_clone.popdown();
+
             if option_clone == "Delete" {
                 // gtk::glib::MainContext::default()
                 //     .spawn_local(dialog_delete(window_clone.clone(), item.clone()));
@@ -322,24 +349,94 @@ pub fn pop_up(
                     window_clone.clone(),
                     scr_clone.clone(),
                 );
+            } else if option_clone == "Rename" {
+                dialog_rename(
+                    new_item.clone(),
+                    item_clone.clone(),
+                    flow_box_clone.clone(),
+                    history_clone.clone(),
+                    current_pos_clone.clone(),
+                    back_button_clone.clone(),
+                    forward_button_clone.clone(),
+                    window_clone.clone(),
+                    scr_clone.clone(),
+                    button_clone.clone(),
+                );
             }
         });
 
-        vbox.append(&button);
+        vbox.append(&button_pop);
     }
-
     popup.set_child(Some(&vbox));
 
-    let rect = button.compute_bounds(&window); // Get absolute position
-
-    let wx = rect.unwrap().x() as i32 + x as i32 + 30;
-    let wy = rect.unwrap().x() as i32 + y as i32 - 15;
+    let wx = x as i32 + 35;
+    let wy = y as i32 - 10;
 
     let rect = Rectangle::new(wx, wy, 1, 1);
     // println!("Cur - {} : {}", bx, y);
     popup.set_pointing_to(Some(&rect));
 
     popup.set_parent(&button);
+    popup.popup();
+}
+
+fn dialog_rename(
+    new_item: String,
+    item: String,
+    flow_box: FlowBox,
+    history: Rc<RefCell<Vec<PathBuf>>>,
+    current_pos: Rc<RefCell<usize>>,
+    back_button: Rc<RefCell<Button>>,
+    forward_button: Rc<RefCell<Button>>,
+    window: ApplicationWindow,
+    scr: ScrolledWindow,
+    button: Button,
+) {
+    let item_path = PathBuf::from(&item);
+    let popup = Popover::builder().has_arrow(false).build();
+
+    let mes;
+    if item_path.is_dir() {
+        mes = "Rename Folder";
+    } else {
+        mes = "Rename File";
+    }
+
+    let title = Label::new(Some(&mes));
+    title.add_css_class("del_dialog_title");
+
+    let entry = Entry::new();
+    entry.set_text(&new_item);
+    entry.add_css_class("suggested-action");
+
+    let but_ren = Button::builder().label("Rename").build();
+    but_ren.add_css_class("suggested-action");
+
+    let hbox = Box::new(Orientation::Horizontal, 0);
+    hbox.append(&but_ren);
+    hbox.set_halign(gtk4::Align::End);
+
+    let vbox = Box::new(Orientation::Vertical, 20);
+    vbox.append(&title);
+    vbox.append(&entry);
+    vbox.append(&hbox);
+    vbox.set_valign(gtk4::Align::Center);
+    vbox.add_css_class("del_dialog_vbox");
+
+    let x = button.width() / 2;
+    let y = button.height();
+    let rect = Rectangle::new(x, y, 1, 1);
+    popup.set_child(Some(&vbox));
+    popup.set_pointing_to(Some(&rect));
+    popup.set_parent(&button);
+
+    // let popup_clone = popup.clone();
+
+    // let popup_clone = popup.clone();
+    // but_ren.connect_clicked(move |_| {
+    //     popup_clone.popdown();
+    // });
+
     popup.popup();
 }
 
@@ -361,13 +458,15 @@ fn dialog_delete(
     let message = Label::new(Some("Permanently deleted items can't be restored"));
     let but_cancel = Button::builder().label("Cancel").build();
     let but_del = Button::builder().label("Delete").build();
+    but_del.add_css_class("destructive-action");
+    but_cancel.add_css_class("accent");
 
     let hbox = Box::new(Orientation::Horizontal, 20);
     hbox.append(&but_cancel);
     hbox.append(&but_del);
     hbox.set_halign(gtk4::Align::Center);
 
-    let vbox = Box::new(Orientation::Vertical, 8);
+    let vbox = Box::new(Orientation::Vertical, 10);
     vbox.append(&title);
     vbox.append(&message);
     vbox.append(&hbox);
@@ -378,9 +477,8 @@ fn dialog_delete(
     let y = (window.height() / 2) - 50;
     let rect = Rectangle::new(x, y, 1, 1);
     popup.set_child(Some(&vbox));
-    popup.set_parent(&window);
+    popup.set_parent(&scr);
     popup.set_pointing_to(Some(&rect));
-    popup.add_css_class("del_dialog");
     let popup_clone = popup.clone();
 
     but_cancel.connect_clicked(move |_| {
@@ -403,4 +501,23 @@ fn dialog_delete(
     });
 
     popup.popup();
+}
+
+pub fn is_dark_theme_active() -> bool {
+    let mut theme = false;
+    // let mut theme_name = String::new();
+    if let Some(display) = Display::default() {
+        let settings = Settings::for_display(&display);
+
+        let theme_name = settings.gtk_theme_name().unwrap();
+
+        if theme_name.to_lowercase().contains("dark") {
+            theme = true;
+        }
+    } else {
+        println!("No default display found.");
+    }
+
+    // Default to false (light theme) if no valid result
+    theme
 }

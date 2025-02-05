@@ -174,6 +174,7 @@ fn cd(
 
         gesture_popup.connect_pressed(move |_gesture, n_press, x, y| {
             if n_press == 1 {
+                let popup_options = vec!["Open", "Cut", "Copy", "Move", "Rename", "Delete"];
                 pop_up(
                     button_clone.clone(),
                     x,
@@ -187,11 +188,10 @@ fn cd(
                     forward_button_clone.clone(),
                     window_clone.clone(),
                     scr_clone.clone(),
+                    popup_options,
                 );
             }
         });
-
-        // Prevent the Button widget from consuming the click event
         gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
         gesture_popup.set_propagation_phase(gtk::PropagationPhase::Capture);
 
