@@ -25,6 +25,7 @@ pub fn select_folder(
     modify_history: bool,
     window: ApplicationWindow,
     scr: ScrolledWindow,
+    copy_memory: Rc<RefCell<PathBuf>>,
 ) {
     let mut files = Vec::new();
     let mut dotfiles = Vec::new();
@@ -49,6 +50,7 @@ pub fn select_folder(
     let folder_clone = folder.clone();
     let flow_box_clone = flow_box.clone();
     let history_clone = history.clone();
+    let copy_memory_clone = copy_memory.clone();
 
     cd(
         files,
@@ -60,6 +62,7 @@ pub fn select_folder(
         forward_button.clone(),
         window.clone(),
         scr.clone(),
+        copy_memory_clone.clone(),
     );
 
     cd(
@@ -72,6 +75,7 @@ pub fn select_folder(
         forward_button.clone(),
         window,
         scr,
+        copy_memory_clone.clone(),
     );
 
     if modify_history {
@@ -101,6 +105,7 @@ fn cd(
     forward_button: Rc<RefCell<Button>>,
     window: ApplicationWindow,
     scr: ScrolledWindow,
+    copy_memory: Rc<RefCell<PathBuf>>,
 ) {
     files.iter().for_each(|item| {
         #[cfg(unix)]
@@ -142,10 +147,11 @@ fn cd(
         let window_clone = window.clone();
         let scr_clone = scr.clone();
         let new_item_clone = new_item.clone();
+        let copy_memory_clone = copy_memory.clone();
 
         gesture.connect_pressed(move |_gesture, n_press, _x, _y| {
             if n_press == 2 {
-                if item_path.is_dir() {
+                if item_path.is_dir() && item_path.exists() {
                     while let Some(child) = flow_box_clone.first_child() {
                         flow_box_clone.remove(&child); // Use reference to child
                     }
@@ -159,6 +165,7 @@ fn cd(
                         true,
                         window_clone.clone(),
                         scr_clone.clone(),
+                        copy_memory_clone.clone(),
                     );
                 }
             }
@@ -171,10 +178,10 @@ fn cd(
         let back_button_clone = back_button.clone();
         let forward_button_clone = forward_button.clone();
         let scr_clone = scr.clone();
+        let copy_memory_clone = copy_memory.clone();
 
         gesture_popup.connect_pressed(move |_gesture, n_press, x, y| {
             if n_press == 1 {
-                let popup_options = vec!["Open", "Cut", "Copy", "Move", "Rename", "Delete"];
                 pop_up(
                     button_clone.clone(),
                     x,
@@ -188,10 +195,11 @@ fn cd(
                     forward_button_clone.clone(),
                     window_clone.clone(),
                     scr_clone.clone(),
-                    popup_options,
+                    copy_memory_clone.clone(),
                 );
             }
         });
+
         gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
         gesture_popup.set_propagation_phase(gtk::PropagationPhase::Capture);
 
@@ -211,14 +219,17 @@ pub fn delete(
     forward_button: Rc<RefCell<Button>>,
     window: ApplicationWindow,
     scr: ScrolledWindow,
+    copy_memory: Rc<RefCell<PathBuf>>,
 ) -> io::Result<()> {
     let item_path = PathBuf::from(item);
-    if item_path.is_dir() {
-        fs::remove_dir_all(item_path)?;
-    } else if item_path.is_file() {
-        fs::remove_file(item_path)?;
-    } else if item_path.is_symlink() {
-        fs::remove_file(item_path)?;
+    if item_path.exists() {
+        if item_path.is_dir() {
+            fs::remove_dir_all(item_path)?;
+        } else if item_path.is_file() {
+            fs::remove_file(item_path)?;
+        } else if item_path.is_symlink() {
+            fs::remove_file(item_path)?;
+        }
     }
 
     let path_to_navigate = {
@@ -228,21 +239,54 @@ pub fn delete(
         Some(history_clone[*current_pos_clone].clone()) // Return only the PathBuf
     };
     if let Some(path) = path_to_navigate {
-        while let Some(child) = flow_box.first_child() {
-            flow_box.remove(&child);
+        if path.exists() {
+            while let Some(child) = flow_box.first_child() {
+                flow_box.remove(&child);
+            }
+            select_folder(
+                path,
+                flow_box,
+                history,
+                current_pos,
+                back_button,
+                forward_button,
+                false,
+                window,
+                scr,
+                copy_memory,
+            );
         }
-        select_folder(
-            path,
-            flow_box,
-            history,
-            current_pos,
-            back_button,
-            forward_button,
-            false,
-            window,
-            scr,
-        );
     }
 
     Ok(())
+}
+
+pub fn cp_dir(source: PathBuf, destination: PathBuf) {
+    if source.exists() {
+        if let Some(name) = source.file_name() {
+            let dest = destination.join(name);
+            if !dest.exists() {
+                fs::create_dir(dest.clone()).expect("Failed to create directory");
+            }
+            println!("{}", source.to_string_lossy());
+
+            if let Ok(items) = fs::read_dir(source) {
+                for item in items {
+                    if let Ok(item) = item {
+                        let dest_clone = dest.clone();
+                        let item_path = PathBuf::from(item.path());
+                        if let Some(item_name) = item_path.file_name() {
+                            let item_path_clone = item_path.clone();
+                            if item_path.is_dir() {
+                                cp_dir(item_path_clone.clone(), dest_clone.clone());
+                            } else {
+                                fs::copy(item_path_clone, dest_clone.join(item_name))
+                                    .expect("Failed to copy file.");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

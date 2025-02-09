@@ -11,6 +11,7 @@ use ui::is_dark_theme_active;
 
 mod cd;
 mod ui;
+mod ui_b;
 
 fn main() -> glib::ExitCode {
     let application = gtk::Application::builder()

@@ -6,6 +6,7 @@ use gtk4::{
     ScrolledWindow, Settings,
 };
 use std::cell::RefCell;
+use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -13,11 +14,13 @@ use crate::buttons_check_sensitive;
 use crate::cd::delete;
 use crate::is_hyprland;
 use crate::select_folder;
+use crate::ui_b::empty_space_pop;
 
 pub fn build_ui(app: &gtk::Application) {
     if let Some(home) = home_dir() {
         let history = Rc::new(RefCell::new(Vec::new()));
         let current_pos = Rc::new(RefCell::new(0usize));
+        let copy_memory = Rc::new(RefCell::new(PathBuf::new()));
 
         let window = gtk::ApplicationWindow::builder()
             .default_width(600)
@@ -89,8 +92,12 @@ pub fn build_ui(app: &gtk::Application) {
             .build();
 
         let window_clone = window.clone();
-        let window_clone2 = window_clone.clone();
         let scrolled_window_clone = scrolled_window.clone();
+        let copy_memory_clone = copy_memory.clone();
+        let history_clone = history.clone();
+        let current_pos_clone = current_pos.clone();
+        let back_button_clone = back_button.clone();
+        let forward_button_clone = forward_button.clone();
 
         let gesture_click = GestureClick::new();
         gesture_click.set_button(3);
@@ -99,11 +106,24 @@ pub fn build_ui(app: &gtk::Application) {
             // Check if the click happened on a child widget
             let child_widget = flow_box_clone.child_at_pos(x as i32, y as i32);
 
-            if child_widget.is_none() {
-                println!("Right-clicked on empty space at position ({}, {})", x, y);
-                // You can show your popover or context menu here
+            if child_widget.is_none() && (881 > x as i32) {
+                empty_space_pop(
+                    x,
+                    y,
+                    scrolled_window_clone.clone(),
+                    copy_memory.clone(),
+                    history_clone.clone(),
+                    current_pos_clone.clone(),
+                    flow_box_clone.clone(),
+                    back_button_clone.clone(),
+                    forward_button_clone.clone(),
+                    window_clone.clone(),
+                );
             }
         });
+
+        let scrolled_window_clone = scrolled_window.clone();
+        let window_clone = window.clone();
 
         gesture_click.set_propagation_phase(gtk::PropagationPhase::Capture);
         scrolled_window.add_controller(gesture_click);
@@ -121,12 +141,13 @@ pub fn build_ui(app: &gtk::Application) {
             true,
             window_clone.clone(),
             scrolled_window.clone(),
+            copy_memory_clone.clone(),
         );
 
-        window.set_titlebar(Some(&header_bar));
-        window.set_child(Some(&scrolled_window));
+        window_clone.set_titlebar(Some(&header_bar));
+        window_clone.set_child(Some(&scrolled_window));
         app.connect_activate(move |_| {
-            window.present();
+            window_clone.present();
         });
 
         let back_motion_controller = EventControllerMotion::new();
@@ -177,11 +198,13 @@ pub fn build_ui(app: &gtk::Application) {
 
         {
             back_button.borrow().connect_clicked({
+                let copy_memory_clone = copy_memory_clone.clone();
                 let history_clone = history.clone();
                 let current_pos_clone = current_pos.clone();
                 let flow_box_clone = flow_box.clone();
                 let back_button_clone = back_button.clone();
                 let forward_button_clone = forward_button.clone();
+                let window_clone = window.clone();
 
                 move |_| {
                     // Use a shorter scope for borrowing
@@ -213,6 +236,7 @@ pub fn build_ui(app: &gtk::Application) {
                                 false, // Do not modify history
                                 window_clone.clone(),
                                 scrolled_window.clone(),
+                                copy_memory_clone.clone(),
                             );
                         }
                     }
@@ -240,9 +264,10 @@ pub fn build_ui(app: &gtk::Application) {
                 let flow_box_clone = flow_box.clone();
                 let back_button_clone = back_button.clone();
                 let forward_button_clone = forward_button.clone();
+                let copy_memory_clone = copy_memory_clone.clone();
+                let window_clone = window.clone();
 
                 move |_| {
-                    // Use a shorter scope for borrowing
                     let path_to_navigate = {
                         let mut current_pos = current_pos_clone.borrow_mut();
                         let history_len = history_clone.borrow().len();
@@ -269,8 +294,9 @@ pub fn build_ui(app: &gtk::Application) {
                                 back_button_clone.clone(),
                                 forward_button_clone.clone(),
                                 false, // Do not modify history
-                                window_clone2.clone(),
+                                window_clone.clone(),
                                 scrolled_window_clone.clone(),
+                                copy_memory_clone.clone(),
                             );
                         }
                     }
@@ -305,8 +331,9 @@ pub fn pop_up(
     forward_button: Rc<RefCell<Button>>,
     window: ApplicationWindow,
     scr: ScrolledWindow,
-    popup_options: Vec<&str>,
+    copy_memory: Rc<RefCell<PathBuf>>,
 ) {
+    let popup_options = vec!["Open", "Cut", "Copy", "Move", "Rename", "Delete"];
     let popup = Popover::builder().has_arrow(false).build();
     let vbox = Box::new(Orientation::Vertical, 5);
 
@@ -330,11 +357,13 @@ pub fn pop_up(
         let forward_button_clone = forward_button.clone();
         let scr_clone = scr.clone();
         let button_clone = button.clone();
+        let copy_memory_clone = copy_memory.clone();
+
         button_pop.add_css_class("flat");
 
         button_pop.connect_clicked(move |_| {
             popup_clone.popdown();
-
+            let item_path = PathBuf::from(item_clone.clone());
             if option_clone == "Delete" {
                 // gtk::glib::MainContext::default()
                 //     .spawn_local(dialog_delete(window_clone.clone(), item.clone()));
@@ -348,6 +377,7 @@ pub fn pop_up(
                     forward_button_clone.clone(),
                     window_clone.clone(),
                     scr_clone.clone(),
+                    copy_memory_clone.clone(),
                 );
             } else if option_clone == "Rename" {
                 dialog_rename(
@@ -361,7 +391,31 @@ pub fn pop_up(
                     window_clone.clone(),
                     scr_clone.clone(),
                     button_clone.clone(),
+                    copy_memory_clone.clone(),
                 );
+            } else if option_clone == "Open" {
+                if item_path.is_dir() && item_path.exists() {
+                    while let Some(child) = flow_box_clone.first_child() {
+                        flow_box_clone.remove(&child);
+                    }
+                    select_folder(
+                        item_path,
+                        flow_box_clone.clone(),
+                        history_clone.clone(),
+                        current_pos_clone.clone(),
+                        back_button_clone.clone(),
+                        forward_button_clone.clone(),
+                        true,
+                        window_clone.clone(),
+                        scr_clone.clone(),
+                        copy_memory_clone.clone(),
+                    );
+                }
+            } else if option_clone == "Copy" {
+                if item_path.exists() {
+                    let mut copy_memory_mut = copy_memory_clone.borrow_mut();
+                    *copy_memory_mut = item_path;
+                }
             }
         });
 
@@ -391,9 +445,10 @@ fn dialog_rename(
     window: ApplicationWindow,
     scr: ScrolledWindow,
     button: Button,
+    copy_memory: Rc<RefCell<PathBuf>>,
 ) {
     let item_path = PathBuf::from(&item);
-    let popup = Popover::builder().has_arrow(false).build();
+    let popup = Popover::builder().has_arrow(true).build();
 
     let mes;
     if item_path.is_dir() {
@@ -408,6 +463,7 @@ fn dialog_rename(
     let entry = Entry::new();
     entry.set_text(&new_item);
     entry.add_css_class("suggested-action");
+    entry.set_width_chars(30);
 
     let but_ren = Button::builder().label("Rename").build();
     but_ren.add_css_class("suggested-action");
@@ -422,6 +478,7 @@ fn dialog_rename(
     vbox.append(&hbox);
     vbox.set_valign(gtk4::Align::Center);
     vbox.add_css_class("del_dialog_vbox");
+    vbox.add_css_class("ren_dialog_vbox");
 
     let x = button.width() / 2;
     let y = button.height();
@@ -430,12 +487,46 @@ fn dialog_rename(
     popup.set_pointing_to(Some(&rect));
     popup.set_parent(&button);
 
-    // let popup_clone = popup.clone();
+    let popup_clone = popup.clone();
+    but_ren.connect_clicked(move |_| {
+        popup_clone.popdown();
+        let item_path = item_path.clone();
+        let flow_box = flow_box.clone();
+        let history = history.clone();
+        let current_pos = current_pos.clone();
+        let back_button = back_button.clone();
+        let forward_button = forward_button.clone();
+        let window = window.clone();
+        let scr = scr.clone();
+        let current_dir = {
+            let current_pos_clone = current_pos.borrow_mut();
 
-    // let popup_clone = popup.clone();
-    // but_ren.connect_clicked(move |_| {
-    //     popup_clone.popdown();
-    // });
+            let history_clone = history.borrow();
+            Some(history_clone[*current_pos_clone].clone()) // Return only the PathBuf
+        };
+        let copy_memory_clone = copy_memory.clone();
+        if let Some(path) = current_dir {
+            if path.exists() {
+                fs::rename(item_path, path.clone().join(entry.text()))
+                    .expect("Failed to rename file.");
+                while let Some(child) = flow_box.first_child() {
+                    flow_box.remove(&child);
+                }
+                select_folder(
+                    path,
+                    flow_box,
+                    history,
+                    current_pos,
+                    back_button,
+                    forward_button,
+                    false,
+                    window,
+                    scr,
+                    copy_memory_clone.clone(),
+                );
+            }
+        }
+    });
 
     popup.popup();
 }
@@ -450,6 +541,7 @@ fn dialog_delete(
     forward_button: Rc<RefCell<Button>>,
     window: ApplicationWindow,
     scr: ScrolledWindow,
+    copy_memory: Rc<RefCell<PathBuf>>,
 ) {
     let popup = Popover::builder().has_arrow(false).build();
     let mes = format!("Permanently Delete \"{}\"?", new_item);
@@ -496,6 +588,7 @@ fn dialog_delete(
             forward_button.clone(),
             window.clone(),
             scr.clone(),
+            copy_memory.clone(),
         )
         .expect("Failed to remove file");
     });
