@@ -10,11 +10,9 @@ use std::fs;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::buttons_check_sensitive;
-use crate::cd::delete;
-use crate::is_hyprland;
-use crate::select_folder;
-use crate::ui_b::empty_space_pop;
+use crate::cd::*;
+use crate::ui_b::*;
+use crate::*;
 
 pub fn build_ui(app: &gtk::Application) {
     if let Some(home) = home_dir() {
@@ -106,7 +104,7 @@ pub fn build_ui(app: &gtk::Application) {
             // Check if the click happened on a child widget
             let child_widget = flow_box_clone.child_at_pos(x as i32, y as i32);
 
-            if child_widget.is_none() && (881 > x as i32) {
+            if child_widget.is_none() {
                 empty_space_pop(
                     x,
                     y,
@@ -431,6 +429,7 @@ pub fn pop_up(
     popup.set_pointing_to(Some(&rect));
 
     popup.set_parent(&button);
+    popup.set_can_focus(false);
     popup.popup();
 }
 

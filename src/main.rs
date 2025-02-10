@@ -1,4 +1,3 @@
-use cd::select_folder;
 use dirs::home_dir;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gdk::Display, glib, Button, CssProvider, Image};
@@ -6,10 +5,10 @@ use std::cell::RefCell;
 use std::env;
 use std::path::PathBuf;
 use std::rc::Rc;
-use ui::build_ui;
-use ui::is_dark_theme_active;
+use ui::*;
 
 mod cd;
+mod cd_b;
 mod ui;
 mod ui_b;
 

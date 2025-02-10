@@ -4,11 +4,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use gdk4::Rectangle;
-use gtk4::{prelude::*, Orientation, ScrolledWindow};
-use gtk4::{ApplicationWindow, Box, Button, FlowBox, Label, Popover};
+use gtk4::{
+    prelude::*, ApplicationWindow, Box, Button, FlowBox, Label, Orientation, Popover,
+    ScrolledWindow,
+};
 
-use crate::cd::cp_dir;
-use crate::cd::select_folder;
+use crate::cd::*;
 
 pub fn empty_space_pop(
     x: f64,
@@ -109,5 +110,40 @@ pub fn empty_space_pop(
     popup.set_pointing_to(Some(&rect));
 
     popup.set_parent(&scr);
+    popup.set_can_focus(false);
+    popup.popup();
+}
+
+pub fn error_pop(message: String, problem: String, window: ApplicationWindow, scr: ScrolledWindow) {
+    let popup = Popover::builder().has_arrow(false).build();
+    let title = Label::new(Some(&message));
+    title.add_css_class("del_dialog_title");
+    let details = Label::new(Some(&problem));
+    let button = Button::builder().label("Ok").build();
+    button.add_css_class("suggested-action");
+
+    let hbox = Box::new(Orientation::Horizontal, 0);
+    hbox.append(&button);
+    hbox.set_halign(gtk4::Align::End);
+
+    let vbox = Box::new(Orientation::Vertical, 20);
+    vbox.append(&title);
+    vbox.append(&details);
+    vbox.append(&hbox);
+    vbox.set_valign(gtk4::Align::Center);
+    vbox.add_css_class("del_dialog_vbox");
+
+    let x = window.width() / 2;
+    let y = (window.height() / 2) - 50;
+    let rect = Rectangle::new(x, y, 1, 1);
+    popup.set_child(Some(&vbox));
+    popup.set_parent(&scr);
+    popup.set_pointing_to(Some(&rect));
+    let popup_clone = popup.clone();
+
+    button.connect_clicked(move |_| {
+        popup_clone.popdown();
+    });
+
     popup.popup();
 }

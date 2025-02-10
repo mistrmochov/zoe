@@ -1,15 +1,14 @@
-use crate::buttons_check_sensitive;
-use crate::ui::pop_up;
-use gtk4::prelude::*;
 use gtk4::{
-    self as gtk, Align, ApplicationWindow, Box, Button, FlowBox, GestureClick, IconSize, Image,
-    Label, Orientation, ScrolledWindow,
+    self as gtk, prelude::*, Align, ApplicationWindow, Box, Button, FlowBox, GestureClick,
+    IconSize, Image, Label, Orientation, ScrolledWindow,
 };
 use std::cell::RefCell;
 use std::fs::{self};
 use std::io::{self};
 use std::path::PathBuf;
 use std::rc::Rc;
+
+use crate::{cd_b::*, ui_b::*, *};
 
 pub fn remove_home_start(item: &str, home: String) -> String {
     item.trim_start_matches(&home).to_string()
@@ -89,10 +88,13 @@ pub fn select_folder(
     }
 
     let pos = *current_pos.borrow();
+    let pos_clone = pos.clone();
     let hist_len = history.borrow().len();
     back_button.borrow().set_sensitive(pos > 0);
     forward_button.borrow().set_sensitive(pos < hist_len - 1);
     buttons_check_sensitive(back_button.clone(), forward_button.clone());
+
+    println!("Position: {}", pos_clone);
 }
 
 fn cd(
@@ -148,6 +150,7 @@ fn cd(
         let scr_clone = scr.clone();
         let new_item_clone = new_item.clone();
         let copy_memory_clone = copy_memory.clone();
+        let folder_clone = folder.clone();
 
         gesture.connect_pressed(move |_gesture, n_press, _x, _y| {
             if n_press == 2 {
@@ -167,6 +170,34 @@ fn cd(
                         scr_clone.clone(),
                         copy_memory_clone.clone(),
                     );
+                } else {
+                    if icon_name == "folder" {
+                        let problem = format!(
+                            "Folder \"{}\" doesn't exist or has been moved!",
+                            new_item_clone.clone()
+                        );
+                        error_pop(
+                            "Folder can't be opened".to_string(),
+                            problem,
+                            window_clone.clone(),
+                            scr_clone.clone(),
+                        );
+                        while let Some(child) = flow_box_clone.first_child() {
+                            flow_box_clone.remove(&child); // Use reference to child
+                        }
+                        select_folder(
+                            folder_clone.clone(),
+                            flow_box_clone.clone(),
+                            history_clone.clone(),
+                            current_pos_clone.clone(),
+                            back_button_clone.clone(),
+                            forward_button_clone.clone(),
+                            false,
+                            window_clone.clone(),
+                            scr_clone.clone(),
+                            copy_memory_clone.clone(),
+                        );
+                    }
                 }
             }
         });
@@ -179,6 +210,7 @@ fn cd(
         let forward_button_clone = forward_button.clone();
         let scr_clone = scr.clone();
         let copy_memory_clone = copy_memory.clone();
+        let new_item_clone = new_item.clone();
 
         gesture_popup.connect_pressed(move |_gesture, n_press, x, y| {
             if n_press == 1 {
@@ -230,6 +262,16 @@ pub fn delete(
         } else if item_path.is_symlink() {
             fs::remove_file(item_path)?;
         }
+    } else {
+        if let Some(name) = item_path.clone().file_name() {
+            let problem = format!("The target \"{}\" doesn't exist!", name.to_string_lossy());
+            error_pop(
+                "File can't be deleted!".to_string(),
+                problem,
+                window.clone(),
+                scr.clone(),
+            );
+        }
     }
 
     let path_to_navigate = {
@@ -251,6 +293,18 @@ pub fn delete(
                 back_button,
                 forward_button,
                 false,
+                window,
+                scr,
+                copy_memory,
+            );
+        } else {
+            fancy_folder_fallback(
+                path,
+                flow_box,
+                history,
+                current_pos,
+                back_button,
+                forward_button,
                 window,
                 scr,
                 copy_memory,
